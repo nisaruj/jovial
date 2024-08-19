@@ -121,6 +121,7 @@ typeset -gA JOVIAL_PALETTE=(
 
 # parts dispaly order from left to right of jovial theme at the first line 
 typeset -ga JOVIAL_PROMPT_ORDER=( host user path dev-env git-info )
+# typeset -ga JOVIAL_PROMPT_ORDER=( host path dev-env git-info )
 
 # prompt parts priority from high to low, for `responsive design`.
 # decide whether to still keep dispaly while terminal width is no enough;
@@ -145,11 +146,14 @@ typeset -gA JOVIAL_AFFIXES=(
     # hostname/username use `Prompt-Expansion` syntax in default
     #   https://zsh.sourceforge.io/Doc/Release/Prompt-Expansion.html
     # but you can override it with simple constant string
-    hostname               '${(%):-%m}'
-    host.suffix            '${JOVIAL_PALETTE[normal]}] ${JOVIAL_PALETTE[conj.]}as'
+    # hostname               '${(%):-%m}'
+    hostname               'H4ck3R'
+    # host.suffix            '${JOVIAL_PALETTE[normal]}] ${JOVIAL_PALETTE[conj.]}as'
+    host.suffix            '${JOVIAL_PALETTE[normal]}]'
 
-    user.prefix            ' '
-    username               '${(%):-%n}'
+    user.prefix            ''
+    # username               '${(%):-%n}'
+    username               ''
     user.suffix            ' ${JOVIAL_PALETTE[conj.]}in'
 
     path.prefix            ' '
@@ -444,15 +448,21 @@ typeset -gA jovial_affix_lengths=()
 @jov.set-typing-pointer() {
     jovial_parts[typing]="${JOVIAL_PALETTE[typing]}"
 
-    if [[ -n ${jovial_rev_git_dir} ]]; then
-        if [[ ${jovial_is_git_dirty} == false ]]; then
-            jovial_parts[typing]+="${JOVIAL_SYMBOL[arrow.git-clean]}"
-        else
-            jovial_parts[typing]+="${JOVIAL_SYMBOL[arrow.git-dirty]}"
-        fi
+    if (( exit_code != 0 )); then
+        jovial_parts[typing]+="${JOVIAL_SYMBOL[arrow.git-dirty]}"
     else
-        jovial_parts[typing]+="${JOVIAL_SYMBOL[arrow]}"
+        jovial_parts[typing]+="${JOVIAL_SYMBOL[arrow.git-clean]}"
     fi
+
+    # if [[ -n ${jovial_rev_git_dir} ]]; then
+    #     if [[ ${jovial_is_git_dirty} == false ]]; then
+    #         jovial_parts[typing]+="${JOVIAL_SYMBOL[arrow.git-clean]}"
+    #     else
+    #         jovial_parts[typing]+="${JOVIAL_SYMBOL[arrow.git-dirty]}"
+    #     fi
+    # else
+    #     jovial_parts[typing]+="${JOVIAL_SYMBOL[arrow]}"
+    # fi
 }
 
 @jov.set-venv-info() {

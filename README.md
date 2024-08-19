@@ -26,7 +26,7 @@ So we make everything easy to use, even if you're new to zsh.
 First, **quick install** is convenient with only a simple one-line command:
 
 ```bash
-curl -sSL https://github.com/zthxxx/jovial/raw/master/installer.sh | sudo -E bash -s ${USER:=`whoami`}
+curl -sSL https://github.com/nisaruj/jovial/raw/master/installer.sh | sudo -E bash -s ${USER:=`whoami`}
 ```
 
 > for more install details see the **[Install section](#install)**; (manually install or without oh-my-zsh is okay)
@@ -242,10 +242,10 @@ Install `jovial` theme in just one click.
 
 ### manually install without oh-my-zsh
 
-First, you need download the [jovial.zsh-theme](https://github.com/zthxxx/jovial/blob/master/jovial.zsh-theme) file manually. For example, use `curl` will like:
+First, you need download the [jovial.zsh-theme](https://github.com/nisaruj/jovial/blob/master/jovial.zsh-theme) file manually. For example, use `curl` will like:
 
 ```bash
-curl -sSL "https://github.com/zthxxx/jovial/raw/master/jovial.zsh-theme" -o ~/.config/jovial.zsh-theme
+curl -sSL "https://github.com/nisaruj/jovial/raw/master/jovial.zsh-theme" -o ~/.config/jovial.zsh-theme
 ```
 
 Then, add these zsh setting code in your `~/.zshrc` and load theme file:

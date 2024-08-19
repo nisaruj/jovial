@@ -182,7 +182,7 @@ install.theme() {
     log.info "[jovial] install theme 'jovial'"
 
     local theme_name="jovial"
-    local git_prefix="https://github.com/zthxxx/${theme_name}/raw/master"
+    local git_prefix="https://github.com/nisaruj/${theme_name}/raw/master"
 
     local theme_remote="${git_prefix}/${theme_name}.zsh-theme"
     local plugin_remote="${git_prefix}/${theme_name}.plugin.zsh"
