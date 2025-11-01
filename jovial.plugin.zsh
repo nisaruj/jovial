@@ -1,11 +1,32 @@
+
 #
-# Locale
-# utf-8 to display emoji
+# ########## Version ##########
 #
 
-export LC_CTYPE=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
-export JOVIAL_PLUGIN_VERSION='1.2.0'
+export JOVIAL_PLUGIN_VERSION='1.2.1'
+
+
+#
+# ########## Locale ##########
+#
+# make sure utf-8 to display emoji and kaomoji (arrow of prompt by default `(๑˃̵ᴗ˂̵)و`)
+#
+# Check LC_ALL, LC_CTYPE, and LANG in order. 
+# If none contains "UTF-8", set LC_ALL to en_US.UTF-8
+#
+
+if [[ -n ${LC_ALL} ]]; then
+    if [[ "${LC_ALL}" != *"UTF-8" ]]; then
+        export LC_ALL=en_US.UTF-8
+    fi
+elif [[ -n ${LC_CTYPE} ]]; then
+    if [[ "${LC_CTYPE}" != *"UTF-8" ]]; then
+        export LC_CTYPE=en_US.UTF-8
+    fi
+elif [[ "${LANG}" != *"UTF-8" ]]; then
+    export LANG=en_US.UTF-8
+fi
+
 
 #
 # ########## Aliases ##########
@@ -60,7 +81,9 @@ function gfco {
     : 'git fetch and checkout to target branch'
 
     local branch="$1"
-    git fetch ${GIT_REMOTE:-origin} --no-tags --update-head-ok +${branch}:${branch} && gco ${branch} --recurse-submodules
+    git fetch ${GIT_REMOTE:-origin} --no-tags --update-head-ok +${branch}:${branch} \
+      && git switch ${branch} \
+      && git submodule update --init --recursive
 }
 
 
@@ -68,7 +91,8 @@ function gfbi {
     : 'git fetch and rebase to target branch'
 
     local branch="$1"
-    git fetch ${GIT_REMOTE:-origin} --no-tags +${branch}:${branch} && grbi --committer-date-is-author-date ${branch}
+    git fetch ${GIT_REMOTE:-origin} --no-tags +${branch}:${branch} \
+        && git rebase --interactive --committer-date-is-author-date ${branch}
 }
 
 
@@ -79,27 +103,31 @@ function gDcb {
     '
 
     local branch="$1"
-    gbD ${branch} 2>/dev/null
-    gco -b ${branch}
+    git switch -C ${branch}
 }
 
 
-function gcmt {
-    : 'git commit with modified time'
+function gcwt {
+    : 'git commit with specificed datetime'
 
     if [[ -z $2 ]]; then
-        echo "gcmt - git commit with specified datetime"
-        echo "Usage: gcmt <commit-time> <commit-message>"
+        echo "gcwt - commit with specificed datetime"
+        echo "Usage: gcwt <commit-time> <commit-message>"
         return
     fi
 
     # https://git-scm.com/book/en/v2/Git-Internals-Environment-Variables
-    GIT_AUTHOR_DATE="$1" GIT_COMMITTER_DATE="$1" gcmsg "$2"
+    GIT_AUTHOR_DATE="$1" GIT_COMMITTER_DATE="$1" git commit --message "$2"
 }
 
+function gcmt {
+    : 'git commit with specified datetime, alias to gcwt'
+    echo '[Deprecated] `gcmt` renamed to `gcwt`'
+    gcwt $@
+}
 
 function gmct {
-    : 'git modify commits time'
+    : 'git modify commits datetime'
 
     if [[ -z $2 ]]; then
         echo "gmct - git modify history commit date with specified datetime"
@@ -124,6 +152,20 @@ function gmct {
     done
 }
 
+function gmwt {
+    : 'git merge with specificed datetime'
+
+    if [[ -z $2 ]]; then
+        echo "gmwt - git merge with specificed datetime"
+        echo "Usage: gmwt <commit-time> <branch>"
+        return
+    fi
+
+    local commit_time="$1"
+    local branch="$2"
+    git merge --no-ff "${branch}" \
+      && GIT_COMMITTER_DATE="${commit_time}" git commit --amend --no-edit --date="${commit_time}"
+}
 
 function grclast {
     : '
@@ -137,16 +179,18 @@ function grclast {
         last_time="$1"
     fi
 
+
+    # https://git-scm.com/book/en/v2/Git-Internals-Environment-Variables
     git reset HEAD~1 \
-      && gaa \
-      && gcmt "${last_time}" "${last_log}"
+      && git add --all \
+      && GIT_AUTHOR_DATE="${last_time}" GIT_COMMITTER_DATE="${last_time}" git commit -n --message "${last_log}"
 }
 
 
 function venv {
     : '
       create or enable python venv
-      $ venv  # -> python3 venv
+      $ venv  # -> uv or python3 venv
       $ venv --py2 # -> python2 virtualenv
     '
 
@@ -155,13 +199,22 @@ function venv {
         return
     fi
 
+    if [[ -d .venv ]]; then
+        # .venv for uv
+        . .venv/bin/activate
+        return
+    fi
+
     if [[ -d venv ]]; then
         . venv/bin/activate
         return
     fi
 
+
     # if not exist venv dir, create a new one before enable it
-    if [[ $1 == --py2 ]]; then
+    if command -v uv &> /dev/null; then
+        uv venv
+    elif [[ $1 == --py2 ]]; then
         python2 -m virtualenv venv
     else
         python3 -m venv venv

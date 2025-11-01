@@ -26,6 +26,22 @@ zmodload zsh/zle
 # https://zsh.sourceforge.io/Doc/Release/Prompt-Expansion.html
 setopt prompt_subst
 
+## Options like misc in ohmyzsh/lib/misc.zsh
+## https://zsh.sourceforge.io/Doc/Release/Options.html
+
+# Allow redirect to multiple streams: echo >file1 >file2
+setopt multios
+# Print job notifications in the long format by default.
+setopt long_list_jobs
+# Allow `#` comments even in interactive shells.
+setopt interactive_comments
+
+# disable oh-my-zsh's URL auto-escape feature by default, due to it's too slow for paste
+# https://github.com/ohmyzsh/ohmyzsh/issues/5569
+# https://github.com/ohmyzsh/ohmyzsh/blob/master/lib/misc.zsh
+export DISABLE_MAGIC_FUNCTIONS=true
+
+
 # setup this flag for hidden python `venv` default prompt
 # https://github.com/python/cpython/blob/3.10/Lib/venv/scripts/common/activate#L56
 export VIRTUAL_ENV_DISABLE_PROMPT=true
@@ -44,7 +60,6 @@ fi
 # SGR link: https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_(Select_Graphic_Rendition)_parameters
 # "%{ %}" is escape values in Prompt-Expansion (vcs_info style) (for used in `print -P`)
 typeset -g sgr_reset="%{\e[00m%}"
-
 
 # jovial theme element symbol mapping
 #
@@ -176,6 +191,8 @@ typeset -gA JOVIAL_AFFIXES=(
     exit-code.suffix       ' '
 
     current-time.prefix    ' '
+    # datetime format provide by [`strftime(3)`](https://www.man7.org/linux/man-pages/man3/strftime.3.html)
+    current-time.dynamic   '%H:%M:%S'
     current-time.suffix    ' '
 )
 
@@ -395,6 +412,7 @@ typeset -gA jovial_parts=() jovial_part_lengths=()
 typeset -gA jovial_previous_parts=() jovial_previous_lengths=()
 
 @jov.reset-prompt-parts() {
+    local key=''
     for key in ${(k)jovial_parts}; do
         jovial_previous_parts[${key}]="${jovial_parts[${key}]}"
         jovial_previous_lengths[${key}]="${jovial_part_lengths[${key}]}"
@@ -427,9 +445,15 @@ typeset -gA jovial_previous_parts=() jovial_previous_lengths=()
 # store calculated lengths of `JOVIAL_AFFIXES` part
 typeset -gA jovial_affix_lengths=()
 
+# for expanding `JOVIAL_AFFIXES` values after .zshrc config overrides
 @jov.init-affix() {
     local key result
     for key in ${(k)JOVIAL_AFFIXES}; do
+        # if a key ends in .dynamic then it's a dynamic value and should not be pre-expanded
+        if [[ ${key} =~ '\.dynamic$' ]]; then
+            continue
+        fi
+
         eval "JOVIAL_AFFIXES[${key}]"=\""${JOVIAL_AFFIXES[${key}]}"\"
         # remove `.prefix`, `.suffix`
         # `xxx.prefix`` -> `xxx`
@@ -466,10 +490,27 @@ typeset -gA jovial_affix_lengths=()
 }
 
 @jov.set-venv-info() {
-    if [[ -z ${VIRTUAL_ENV} ]]; then
+    : 'for python venv or virtualenv or miniconda'
+
+    local venv_name=""
+
+    if [[ -n ${CONDA_DEFAULT_ENV} && ${CONDA_DEFAULT_ENV} != "base"  ]]; then
+        # for miniconda
+        # need set `conda config --set changeps1 false` to avoid conda auto set prompt
+        # `${...:t}` means basename of the path
+        venv_name="${CONDA_DEFAULT_ENV:t}"
+
+    elif [[ -n ${VIRTUAL_ENV} && ${VIRTUAL_ENV} != "base" ]]; then
+        # for python venv or virtualenv
+        # need set VIRTUAL_ENV_DISABLE_PROMPT to avoid python venv auto set prompt
+        # `${...:t}` means basename of the path
+        venv_name="${VIRTUAL_ENV:t}"
+    fi
+
+    if [[ -z ${venv_name} ]]; then
         jovial_parts[venv]=''
     else
-        jovial_parts[venv]="${JOVIAL_AFFIXES[venv.prefix]}${JOVIAL_PALETTE[venv]}$(basename ${VIRTUAL_ENV})${JOVIAL_AFFIXES[venv.suffix]}"
+        jovial_parts[venv]="${JOVIAL_AFFIXES[venv.prefix]}${JOVIAL_PALETTE[venv]}${venv_name}${JOVIAL_AFFIXES[venv.suffix]}"
     fi
 }
 
@@ -509,6 +550,39 @@ typeset -gA jovial_affix_lengths=()
     ))
 
     jovial_parts[path]="${JOVIAL_AFFIXES[path.prefix]}${JOVIAL_PALETTE[path]}${jovial_parts[path]}${JOVIAL_AFFIXES[path.suffix]}"
+}
+
+
+# if path is too long, truncate path to fit terminal width
+# only run if `jovial_part_lengths[path]` exceeds terminal width after 
+#
+# - `jovial_part_lengths[path]` set by `@jov.set-current-dir` on per chpwd hook
+# - `@jov.update-path-truncate max_length` called each prompt render
+@jov.update-path-truncate() {
+    local -i max_length="${1}"
+
+    # after truncated, the path length should not exceed `max_length`
+    jovial_part_lengths[path-truncated]=${max_length} 
+
+    # 1 is for display ellipsis `…`
+    local -i truncate_length=$(( max_length - ${jovial_affix_lengths[path]} - 1 ))
+
+    if (( truncate_length <= 0 )); then
+        # if truncate length is less than or equal to 0, then no need to truncate
+        jovial_parts[path-truncated]=""
+        jovial_part_lengths[path-truncated]=0
+        return
+    fi
+
+    local path_untruncated="${(%):-${JOVIAL_AFFIXES[current-dir]}}"
+    local -i path_length=${#path_untruncated}
+    local -i slice_start=$(( path_length - truncate_length))
+    # ${name:offset}
+    # ${name:offset:length}
+    # https://zsh.sourceforge.io/Doc/Release/Expansion.html#Parameter-Expansion
+    local path_truncated="…${path_untruncated:${slice_start}}"
+
+    jovial_parts[path-truncated]="${JOVIAL_AFFIXES[path.prefix]}${JOVIAL_PALETTE[path]}${path_truncated}${JOVIAL_AFFIXES[path.suffix]}"
 }
 
 
@@ -594,11 +668,17 @@ typeset -gA jovial_affix_lengths=()
 
 @jov.set-date-time() {
     # trimming suffix trailing whitespace
-    # donot print trailing whitespace for better interaction while terminal width in narrowing
+    # do not print trailing whitespace for better interaction while terminal width in narrowing
     local suffix="${(MS)JOVIAL_AFFIXES[current-time.suffix]##*[[:graph:]]}"
-    local current_time="${JOVIAL_AFFIXES[current-time.prefix]}${JOVIAL_PALETTE[time]}${(%):-%D{%H:%M:%S\}}${suffix}"
-    # 8 is fixed lenght of datatime format `hh:mm:ss`
-    jovial_part_lengths[current-time]=$(( 8 + ${jovial_affix_lengths[current-time]} ))
+
+    # expand datetime format by zsh `%D{string}` [Prompt-Expansion](https://zsh.sourceforge.io/Doc/Release/Prompt-Expansion.html#13_2_4_Date_and_time)
+    # `{string}` is formatted by [`strftime(3)`](https://www.man7.org/linux/man-pages/man3/strftime.3.html)
+    local current_time="${(%):-%D{${JOVIAL_AFFIXES[current-time.dynamic]}\}}"
+
+    jovial_part_lengths[current-time]=$(( ${#current_time} + ${jovial_affix_lengths[current-time]} ))
+
+    # format the current time and align it to the right
+    current_time="${JOVIAL_AFFIXES[current-time.prefix]}${JOVIAL_PALETTE[time]}${current_time}${suffix}"
     @jov.align-right "${current_time}" ${jovial_part_lengths[current-time]} 'jovial_parts[current-time]'
 }
 
@@ -681,6 +761,7 @@ typeset -ga JOVIAL_DEV_ENV_DETECT_FUNCS=(
 )
 
 @jov.dev-env-detect() {
+    local segment_func=''
     for segment_func in ${JOVIAL_DEV_ENV_DETECT_FUNCS[@]}; do
         local segment=`${segment_func}`
         if [[ -n ${segment} ]]; then 
@@ -963,7 +1044,6 @@ add-zsh-hook precmd @jov.prompt-prepare
 
 
 @jovial-prompt() {
-    local -i total_length=${#JOVIAL_SYMBOL[corner.top]}
     local -A prompts=(
         margin-line ''
         host ''
@@ -976,21 +1056,38 @@ add-zsh-hook precmd @jov.prompt-prepare
         venv ''
     )
 
-    local prompt_is_emtpy=true
-    local key
 
+    # prepare length accumulator of the left part prompt 
+    # keep padding 1 space from left path to end or right part
+    local -i total_length=$(( 1 + ${#JOVIAL_SYMBOL[corner.top]} ))
+
+    local key=''
     for key in ${JOVIAL_PROMPT_PRIORITY[@]}; do
         local -i part_length=${jovial_part_lengths[${key}]}
+        local prompt_part="${jovial_parts[${key}]}"
 
-        # keep padding right 1 space
-        if (( total_length + part_length + 1 > COLUMNS )) && [[ ${prompt_is_emtpy} == false ]] ; then
+        if [[ ${key} == 'path' ]] ; then
+            # if path size is exceed, truncate path to fit terminal width
+            if (( total_length + part_length > COLUMNS )) ; then
+                local remaining_length=$(( COLUMNS - total_length ))
+                @jov.update-path-truncate "${remaining_length}"
+
+                prompt_part="${jovial_parts[path-truncated]}"
+                part_length=${jovial_part_lengths[path-truncated]}
+
+                if (( part_length <= 0 )); then
+                    # if path is empty after truncate, skip this part
+                    continue
+                fi
+            fi
+        elif (( total_length + part_length > COLUMNS )) && [[ ${prompt_is_emtpy} == false ]] ; then
             break
         fi
         
         prompt_is_emtpy=false
 
         total_length+=${part_length}
-        prompts[${key}]="${sgr_reset}${jovial_parts[${key}]}"
+        prompts[${key}]="${sgr_reset}${prompt_part}"
     done
 
     # always auto detect rest spaces to float current time
